@@ -1,11 +1,11 @@
-import matplotlib.pyplot as plt
 import tensorflow as tf
 import numpy as np
 from tensorflow import keras
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import os
-import shutil
 import random
+import math
+# import shutil
 
 cur_dir = os.getcwd()
 datasets_dir = os.path.join(cur_dir, 'datasets')
@@ -19,6 +19,8 @@ AUTOTUNE = tf.data.AUTOTUNE
 
 class_lsit = os.listdir(data_dir)
 
+# Change Image Extensions
+'''
 for classes in class_lsit:
     image_dir = os.path.join(data_dir, classes)
     image_files = [file_name for file_name in os.listdir(image_dir) if os.path.splitext(file_name)[-1] != '.jpg']
@@ -27,7 +29,10 @@ for classes in class_lsit:
         image_path = os.path.join(image_dir, image)
         new_image_path = os.path.splitext(image_path)[0] + '.jpg'
         os.rename(image_path, new_image_path)
+'''
 
+# Used when train / validation directory separation is required
+'''
 train_dir = os.path.join(datasets_dir, 'train')
 val_dir = os.path.join(datasets_dir, 'validation')
 split_ratio = 0.9
@@ -67,10 +72,10 @@ for class_dir in class_lsit:
         val_img_path = os.path.join(class_path, image)
         val_dir_path = os.path.join(val_dir_class, image)
         shutil.copyfile(val_img_path, val_dir_path)
+'''
 
 
-
-def assemble_train(epoch, seed, min_object=3):
+def generate_train_val(epoch, seed, min_object=3):
     train_dataset = []
     train_label = []
     val_dataset = []
@@ -79,7 +84,7 @@ def assemble_train(epoch, seed, min_object=3):
 
     for idx in range(epoch):
         train_ds = keras.preprocessing.image_dataset_from_directory(
-            directory=train_dir,
+            directory=data_dir,
             label_mode='categorical',
             shuffle=True,
             validation_split=0.1,
@@ -110,7 +115,7 @@ def assemble_train(epoch, seed, min_object=3):
             train_label.append(merged_label)
 
         val_ds = keras.preprocessing.image_dataset_from_directory(
-            directory=train_dir,
+            directory=data_dir,
             label_mode='categorical',
             validation_split=0.1,
             subset='validation',
@@ -142,12 +147,8 @@ def assemble_train(epoch, seed, min_object=3):
         train_dataset, train_label = np.array(train_dataset), np.array(train_label)
         val_dataset, val_label = np.array(val_dataset), np.array(val_label)
 
-    preprocessed_train = tf.data.Dataset.zip(
-        (tf.data.Dataset.from_tensor_slices(train_dataset), tf.data.Dataset.from_tensor_slices(train_label))
-    )
-    preprocessed_val = tf.data.Dataset.zip(
-        (tf.data.Dataset.from_tensor_slices(val_dataset), tf.data.Dataset.from_tensor_slices(val_label))
-    )
+    total_train = tf.data.Dataset.from_tensor_slices((train_dataset, train_label))
+    total_val = tf.data.Dataset.from_tensor_slices((val_dataset, val_label))
 
     data_augmentation = ImageDataGenerator(
         rotation_range=10,
@@ -158,20 +159,14 @@ def assemble_train(epoch, seed, min_object=3):
         vertical_flip=False,
         fill_mode="nearest"
     )
+    train_aug = data_augmentation.flow(train_dataset, train_label, batch_size=BATCH_SIZE)
 
-    def apply_data_augmentation(image, label):
-        image = tf.image.decode_jpeg(image, channels=3)
-        image = data_augmentation.random_transform(image)
-        image = tf.image.convert_image_dtype(image, tf.float32)
-        return image, label
+    for _ in range(math.ceil(len(train_dataset)/BATCH_SIZE)):
+        aug_data_batch = tf.data.Dataset.from_tensor_slices(next(train_aug))
+        total_train = total_train.concatenate((aug_data_batch))
 
-    final_train = preprocessed_train.map(lambda x, y : apply_data_augmentation(x, y))
-    buf_size = len(preprocessed_train) * 2
-    final_train = final_train.batch(BATCH_SIZE, drop_remainder=True).shuffle(buffer_size=buf_size).prefetch(AUTOTUNE)
-    final_val = preprocessed_val.batch(BATCH_SIZE).prefetch(AUTOTUNE)
+    buf_size = len(total_train) * 2
+    final_train = total_train.batch(BATCH_SIZE, drop_remainder=True).shuffle(buffer_size=buf_size).prefetch(AUTOTUNE)
+    final_val = total_val.batch(BATCH_SIZE).prefetch(AUTOTUNE)
 
     return final_train, final_val
-
-
-seed_list = [4243]
-train, val = assemble_train(1, seed_list)
