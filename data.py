@@ -11,7 +11,7 @@ cur_dir = os.getcwd()
 datasets_dir = os.path.join(cur_dir, 'datasets')
 data_dir = os.path.join(datasets_dir, 'sport')
 
-IMG_SIZE = 200
+IMG_SIZE = 80
 BATCH_SIZE = 64
 EPOCHS = 100
 NUM_CLASS = 30
@@ -144,8 +144,8 @@ def generate_train_val(epoch, seed, min_object=3):
             val_dataset.append(merged_image)
             val_label.append(merged_label)
 
-        train_dataset, train_label = np.array(train_dataset), np.array(train_label)
-        val_dataset, val_label = np.array(val_dataset), np.array(val_label)
+    train_dataset, train_label = np.array(train_dataset) / 255., np.array(train_label)
+    val_dataset, val_label = np.array(val_dataset) / 255., np.array(val_label)
 
     total_train = tf.data.Dataset.from_tensor_slices((train_dataset, train_label))
     total_val = tf.data.Dataset.from_tensor_slices((val_dataset, val_label))
